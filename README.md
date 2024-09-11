@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Diffusion Policy
 
 [[Project page]](https://diffusion-policy.cs.columbia.edu/)
@@ -435,3 +436,6 @@ This repository is released under the MIT license. See [LICENSE](LICENSE) for ad
 * The [Block Pushing](./diffusion_policy/env/block_pushing) task is adapted from [BET](https://github.com/notmahi/bet) and [IBC](https://github.com/google-research/ibc).
 * The [Kitchen](./diffusion_policy/env/kitchen) task is adapted from [BET](https://github.com/notmahi/bet) and [Relay Policy Learning](https://github.com/google-research/relay-policy-learning).
 * Our [shared_memory](./diffusion_policy/shared_memory) data structures are heavily inspired by [shared-ndarray2](https://gitlab.com/osu-nrsg/shared-ndarray2).
+=======
+# diffusion_policy
+>>>>>>> 7e864bc8672c65c203c1689cb821467f864f0571
