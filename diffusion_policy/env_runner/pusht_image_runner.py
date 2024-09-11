@@ -6,6 +6,9 @@ import pathlib
 import tqdm
 import dill
 import math
+import h5py
+import json
+import os
 import wandb.sdk.data_types.video as wv
 from diffusion_policy.env.pusht.pusht_image_env import PushTImageEnv
 from diffusion_policy.gym_util.async_vector_env import AsyncVectorEnv
@@ -146,7 +149,8 @@ class PushTImageRunner(BaseImageRunner):
         device = policy.device
         dtype = policy.dtype
         env = self.env
-
+        print('env',env)
+        
         # plan for rollout
         n_envs = len(self.env_fns)
         n_inits = len(self.env_init_fn_dills)
@@ -155,6 +159,9 @@ class PushTImageRunner(BaseImageRunner):
         # allocate data
         all_video_paths = [None] * n_inits
         all_rewards = [None] * n_inits
+        
+        # 设置轨迹
+        trajectory_data = []
 
         for chunk_idx in range(n_chunks):
             start = chunk_idx * n_envs
@@ -209,6 +216,15 @@ class PushTImageRunner(BaseImageRunner):
                 done = np.all(done)
                 past_action = action
 
+                # 保存轨迹数据
+                trajectory_data.append({
+                    'obs': np_obs_dict,
+                    'action': action,
+                    'reward': reward,
+                    'done': done,
+                    'info': info
+                })
+
                 # update pbar
                 pbar.update(action.shape[1])
             pbar.close()
@@ -247,5 +263,30 @@ class PushTImageRunner(BaseImageRunner):
             name = prefix+'mean_score'
             value = np.mean(value)
             log_data[name] = value
+            
+        # 保存轨迹数据为 hdf5
+        outputdir = "data/pusht_eval_image_output4"
+        trajectory_path = os.path.join(outputdir, 'trajectory_data.h5')
+        with h5py.File(trajectory_path, 'w') as f:
+            for idx, traj in enumerate(trajectory_data):
+                grp = f.create_group(f'traj_{idx}')
+                grp.create_dataset('obs', data=json.dumps(traj['obs'], default=convert_to_serializable))
+                grp.create_dataset('action', data=traj['action'])
+                grp.create_dataset('reward', data=traj['reward'])
+                grp.create_dataset('done', data=traj['done'])
+                grp.create_dataset('info', data=json.dumps(traj['info'], default=convert_to_serializable))
 
-        return log_data
+
+        return log_data,
+
+def convert_to_serializable(val):
+    if isinstance(val, np.ndarray):
+        return val.tolist()
+    elif isinstance(val, (int, float, str, bool, type(None))):
+        return val
+    elif isinstance(val, dict):
+        return {k: convert_to_serializable(v) for k, v in val.items()}
+    elif isinstance(val, list):
+        return [convert_to_serializable(v) for v in val]
+    else:
+        raise TypeError(f"Type {type(val)} not serializable")

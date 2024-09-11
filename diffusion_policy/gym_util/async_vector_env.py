@@ -93,7 +93,7 @@ class AsyncVectorEnv(VectorEnv):
         self.env_fns = env_fns
         self.shared_memory = shared_memory
         self.copy = copy
-
+        self.statelist = []
         # Added dummy_env_fn to fix OpenGL error in Mujoco
         # disable any OpenGL rendering in dummy_env_fn, since it
         # will conflict with OpenGL context in the forked child process
@@ -153,6 +153,7 @@ class AsyncVectorEnv(VectorEnv):
                         parent_pipe,
                         _obs_buffer,
                         self.error_queue,
+                        self.statelist,
                     ),
                 )
 
@@ -162,7 +163,8 @@ class AsyncVectorEnv(VectorEnv):
                 process.daemon = daemon
                 process.start()
                 child_pipe.close()
-
+        
+        # print('!!!!!!!!!!!!!!!!!!!',self.statelist)
         self._state = AsyncState.DEFAULT
         self._check_observation_spaces()
 
@@ -184,6 +186,7 @@ class AsyncVectorEnv(VectorEnv):
         for pipe, seed in zip(self.parent_pipes, seeds):
             pipe.send(("seed", seed))
         _, successes = zip(*[pipe.recv() for pipe in self.parent_pipes])
+        
         self._raise_if_errors(successes)
 
     def reset_async(self):
@@ -226,6 +229,7 @@ class AsyncVectorEnv(VectorEnv):
             )
 
         results, successes = zip(*[pipe.recv() for pipe in self.parent_pipes])
+        # print("reset_wait",results)
         self._raise_if_errors(successes)
         self._state = AsyncState.DEFAULT
 
@@ -237,6 +241,7 @@ class AsyncVectorEnv(VectorEnv):
         return deepcopy(self.observations) if self.copy else self.observations
 
     def step_async(self, actions):
+        # print("action.shapes",actions.shape)
         """
         Parameters
         ----------
@@ -253,6 +258,7 @@ class AsyncVectorEnv(VectorEnv):
 
         for pipe, action in zip(self.parent_pipes, actions):
             pipe.send(("step", action))
+            # print("step_async",len(self.statelist))
         self._state = AsyncState.WAITING_STEP
 
     def step_wait(self, timeout=None):
@@ -288,10 +294,15 @@ class AsyncVectorEnv(VectorEnv):
             )
 
         results, successes = zip(*[pipe.recv() for pipe in self.parent_pipes])
+        # print(results)
+        # print(successes)
+        # print("results_wait",len(results))
+        # print("successes",successes)
         self._raise_if_errors(successes)
         self._state = AsyncState.DEFAULT
-        observations_list, rewards, dones, infos = zip(*results)
-
+        # observations_list, rewards, dones, infos = zip(*results)
+        self.statelist,rewards,dones,infos = zip(*results)
+        # print(len(self.statelist))
         if not self.shared_memory:
             self.observations = concatenate(
                 observations_list, self.observations, self.single_observation_space
@@ -452,6 +463,7 @@ class AsyncVectorEnv(VectorEnv):
             )
 
         results, successes = zip(*[pipe.recv() for pipe in self.parent_pipes])
+        
         self._raise_if_errors(successes)
         self._state = AsyncState.DEFAULT
 
@@ -612,9 +624,11 @@ def _worker(index, env_fn, pipe, parent_pipe, shared_memory, error_queue):
         env.close()
 
 
-def _worker_shared_memory(index, env_fn, pipe, parent_pipe, shared_memory, error_queue):
+def _worker_shared_memory(index, env_fn, pipe, parent_pipe, shared_memory, error_queue, statelist):
     assert shared_memory is not None
     env = env_fn()
+    # print('@')
+    statelist.append(env.statelist)
     observation_space = env.observation_space
     parent_pipe.close()
     try:
@@ -627,13 +641,19 @@ def _worker_shared_memory(index, env_fn, pipe, parent_pipe, shared_memory, error
                 )
                 pipe.send((None, True))
             elif command == "step":
+                # print("data.shape",data.shape)
+                # print("env.step",env.step)
                 observation, reward, done, info = env.step(data)
+                # print("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",len(env.statelist))
                 # if done:
                 #     observation = env.reset()
                 write_to_shared_memory(
                     index, observation, shared_memory, observation_space
                 )
-                pipe.send(((None, reward, done, info), True))
+                # pipe.send(env.statelist)
+                # print('llllllllllllllllllllllllllllllll',len(statelist))
+                # pipe.send(((None, reward, done, info), True))
+                pipe.send(((statelist, reward, done, info), True))
             elif command == "seed":
                 env.seed(data)
                 pipe.send((None, True))

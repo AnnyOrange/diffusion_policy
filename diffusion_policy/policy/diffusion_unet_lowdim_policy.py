@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange, reduce
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
-
+import numpy as np
 from diffusion_policy.model.common.normalizer import LinearNormalizer
 from diffusion_policy.policy.base_lowdim_policy import BaseLowdimPolicy
 from diffusion_policy.model.diffusion.conditional_unet1d import ConditionalUnet1D
@@ -74,7 +74,8 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
     
         # set step values
         scheduler.set_timesteps(self.num_inference_steps)
-
+    
+        noise_T = []
         for t in scheduler.timesteps:
             # 1. apply conditioning
             trajectory[condition_mask] = condition_data[condition_mask]
@@ -84,15 +85,31 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
                 local_cond=local_cond, global_cond=global_cond)
 
             # 3. compute previous image: x_t -> x_t-1
-            trajectory = scheduler.step(
+            # trajectory = scheduler.step(
+            #     model_output, t, trajectory, 
+            #     generator=generator,
+            #     **kwargs
+            #     ).prev_sample
+            x_t = scheduler.step(
                 model_output, t, trajectory, 
                 generator=generator,
                 **kwargs
                 ).prev_sample
+            noise = x_t-trajectory
+            trajectory = x_t
+            noise_T.append(noise)
+            # print("noise.shape",noise.shape)
         
         # finally make sure conditioning is enforced
         trajectory[condition_mask] = condition_data[condition_mask]        
+        # Convert noise_T list to a tensor
+        noise_T = torch.stack(noise_T)
+        # print("noise_T.shape",noise_T.shape)
+        # Compute variance using PyTorch
+        var = noise_T.var(dim=0)  # Adjust dim as needed
 
+        # print("Variance of noise_T:", var)
+      
         return trajectory
 
 
@@ -118,6 +135,7 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
         # handle different ways of passing observation
         local_cond = None
         global_cond = None
+        # print("self.obs_as_global_cond",self.obs_as_global_cond)
         if self.obs_as_local_cond:
             # condition through local feature
             # all zero except first To timesteps
@@ -143,7 +161,7 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
             cond_mask[:,:To,Da:] = True
 
         # run sampling
-        nsample = self.conditional_sample(
+        nsample= self.conditional_sample(
             cond_data, 
             cond_mask,
             local_cond=local_cond,
@@ -151,6 +169,7 @@ class DiffusionUnetLowdimPolicy(BaseLowdimPolicy):
             **self.kwargs)
         
         # unnormalize prediction
+        # print("Da",Da)
         naction_pred = nsample[...,:Da]
         action_pred = self.normalizer['action'].unnormalize(naction_pred)
 

@@ -26,28 +26,37 @@ def main(checkpoint, output_dir, device):
     if os.path.exists(output_dir):
         click.confirm(f"Output path {output_dir} already exists! Overwrite?", abort=True)
     pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
-    
+    # import pdb; pdb.set_trace()
     # load checkpoint
     payload = torch.load(open(checkpoint, 'rb'), pickle_module=dill)
     cfg = payload['cfg']
     cls = hydra.utils.get_class(cfg._target_)
+    # print("cls",cls)
+
     workspace = cls(cfg, output_dir=output_dir)
-    workspace: BaseWorkspace
+    workspace: BaseWorkspace # 指定类的继承
     workspace.load_payload(payload, exclude_keys=None, include_keys=None)
     
     # get policy from workspace
     policy = workspace.model
+    # print(policy)
     if cfg.training.use_ema:
+        # print("true")
         policy = workspace.ema_model
     
     device = torch.device(device)
     policy.to(device)
-    policy.eval()
+    policy.eval() # 推理
     
+    replay = True
     # run eval
+    if replay == True:
+        cfg.task.env_runner['_target_'] = 'replay_pusht_video.PushTKeypointsRunner_Replay'
+    # print("cfg.task.env_runner",cfg.task.env_runner)
     env_runner = hydra.utils.instantiate(
         cfg.task.env_runner,
         output_dir=output_dir)
+    # print("env_runner",env_runner)
     runner_log = env_runner.run(policy)
     
     # dump log to json

@@ -45,7 +45,8 @@ def main(output, render_size, control_hz):
         # reset env and get observations (including info and render for recording)
         obs = env.reset()
         info = env._get_info()
-        img = env.render(mode='human')
+        # img = env.render(mode='human')
+        # img = env.render(mode='rgb_array')
         
         # loop state
         retry = False
@@ -100,7 +101,9 @@ def main(output, render_size, control_hz):
                 
             # step env and render
             obs, reward, done, info = env.step(act)
-            img = env.render(mode='human')
+            print(info)
+            # img = env.render(mode='human')
+            # img = env.render(mode='rgd_array')
             
             # regulate control frequency
             clock.tick(control_hz)

@@ -238,7 +238,7 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
         # allocate data
         all_video_paths = [None] * n_inits
         all_rewards = [None] * n_inits
-
+        action_all = []
         for chunk_idx in range(n_chunks):
             start = chunk_idx * n_envs
             end = min(n_inits, start + n_envs)
@@ -281,28 +281,51 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
                 obs_dict = dict_apply(np_obs_dict, 
                     lambda x: torch.from_numpy(x).to(
                         device=device))
+                #####################################
+                # # run policy
+                # with torch.no_grad():
+                #     action_dict = policy.predict_action(obs_dict)
 
-                # run policy
-                with torch.no_grad():
-                    action_dict = policy.predict_action(obs_dict)
+                # # device_transfer
+                # np_action_dict = dict_apply(action_dict,
+                #     lambda x: x.detach().to('cpu').numpy())
 
-                # device_transfer
-                np_action_dict = dict_apply(action_dict,
-                    lambda x: x.detach().to('cpu').numpy())
-
-                # handle latency_steps, we discard the first n_latency_steps actions
-                # to simulate latency
-                action = np_action_dict['action'][:,self.n_latency_steps:]
-                if not np.all(np.isfinite(action)):
-                    print(action)
-                    raise RuntimeError("Nan or Inf action")
+                # # handle latency_steps, we discard the first n_latency_steps actions
+                # # to simulate latency
+                # action = np_action_dict['action'][:,self.n_latency_steps:]
+                # if not np.all(np.isfinite(action)):
+                #     raise RuntimeError("Nan or Inf action")
                 
-                # step env
-                env_action = action
-                if self.abs_action:
-                    env_action = self.undo_transform_action(action)
-
-                obs, reward, done, info = env.step(env_action)
+                # # step env
+                # env_action = action
+                # if self.abs_action:
+                #     env_action = self.undo_transform_action(action)
+                # obs, reward, done, info = env.step(env_action)
+                # print("self.abs_action",self.abs_action)
+                ######################
+                with torch.no_grad():
+                    action_samples = []
+                    for _ in range(20):  # Sample 20 actions for variance calculation
+                        action_dict = policy.predict_action(obs_dict)
+                        np_action_dict = dict_apply(action_dict,lambda x: x.detach().to('cpu').numpy())
+                        action = np_action_dict['action'][:,self.n_latency_steps:]
+                        if not np.all(np.isfinite(action)):
+                            raise RuntimeError("Nan or Inf action")
+                        env_action = action
+                        if self.abs_action:
+                            env_action = self.undo_transform_action(action)
+                            # print("env_action.shape",env_action.shape)
+                        action_samples.append(env_action)
+                    zscore_action = self.zscore(action_samples)
+                    env_action = action_samples[0]
+                    # print("env_action",env_action.shape)
+                    action_variance = np.var(zscore_action, axis=0) #(28,8,7)
+                action_and_var = np.concatenate((env_action, action_variance), axis=-1)
+                # print("action_and_var",action_and_var.shape)
+                action_all.append(env_action)
+                obs, reward, done, info = env.step(action_and_var)
+                print(info)
+                ##################
                 done = np.all(done)
                 past_action = action
 
@@ -313,6 +336,11 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
             # collect data for this round
             all_video_paths[this_global_slice] = env.render()[this_local_slice]
             all_rewards[this_global_slice] = env.call('get_attr', 'reward')[this_local_slice]
+        # 将action_all存下来
+        # action_all_array = np.array(action_all)
+        # statelist_array = np.array(env.statelist)
+        # np.save('action_all_square_2550.npy', action_all_array)
+        # np.save('statelist_square_2550.npy', statelist_array)
 
         # log
         max_rewards = collections.defaultdict(list)
@@ -366,3 +394,12 @@ class RobomimicLowdimRunner(BaseLowdimRunner):
             uaction = uaction.reshape(*raw_shape[:-1], 14)
 
         return uaction
+    
+    def zscore(self, action_samples):
+        # zscore的作用应该是标准化为无量纲数据，将数据变成近似N(0,1)的？
+        mean = np.load('action_all_square_tranformer_mean_2550.npy')# mean是(7;)的shape
+        std = np.load('action_all_square_tranformer_std_2550.npy')# std是(7;)的shape
+        # action_samples是(28,8,7)的shape
+        zscores = (action_samples - mean) / std 
+        return zscores
+                    
