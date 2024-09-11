@@ -438,4 +438,7 @@ This repository is released under the MIT license. See [LICENSE](LICENSE) for ad
 * Our [shared_memory](./diffusion_policy/shared_memory) data structures are heavily inspired by [shared-ndarray2](https://gitlab.com/osu-nrsg/shared-ndarray2).
 =======
 # diffusion_policy
->>>>>>> 7e864bc8672c65c203c1689cb821467f864f0571
+Pusht replay
+```console
+(robodiff)$ python eval.py --checkpoint data/checkpoints/epoch=0550-test_mean_score=0.969.ckpt --output_dir data/pusht_eval_output --device cuda:6 --replay True
+```
