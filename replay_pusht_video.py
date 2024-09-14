@@ -195,7 +195,6 @@ class PushTKeypointsRunner_Replay(BaseLowdimRunner):
             variances = [f['variances'][f"step_{i}"][:] for i in range(step_num)]
             rewards = [f['rewards'][f"step_{i}"][:] for i in range(step_num)]
             observations = [f['observations'][f"step_{i}"][:] for i in range(step_num)]
-            print("actions.shape",actions[0].shape)
             # 提取 info 中的内容
             # pos_agent = [f['info/pos_agent'][f"step_{i}"][:] for i in range(step_num)]
             # vel_agent = [f['info/vel_agent'][f"step_{i}"][:] for i in range(step_num)]
@@ -233,8 +232,11 @@ class PushTKeypointsRunner_Replay(BaseLowdimRunner):
             is_noise_step = 0
             step_num = 0
             i_num = 0
+
             while not done:
                 Do = obs.shape[-1] // 2
+                if step_i >= len(actions):
+                    break
                 # create obs dict
                 np_obs_dict = {
                     # handle n_latency_steps by discarding the last n_latency_steps
@@ -250,15 +252,13 @@ class PushTKeypointsRunner_Replay(BaseLowdimRunner):
                 obs_dict = dict_apply(np_obs_dict, 
                     lambda x: torch.from_numpy(x).to(
                         device=device))
-                # actions = [f['actions'][f"step_{i}"][:] for i in range(step_num)]
-                # variances = [f['variances'][f"step_{i}"][:] for i in range(step_num)]
-                # rewards = [f['rewards'][f"step_{i}"][:] for i in range(step_num)]
-                # observations = [f['observations'][f"step_{i}"][:] for i in range(step_num)]
                 action = actions[step_i]
+                action_downsampled = action[:, ::2, :]
                 action_variance = variances[step_i]
-                
+                variance_downsampled = action_variance[:, ::2, :]
+                step_i = step_i+1
                 # step env
-                action_and_noise = np.concatenate((action, action_variance), axis=-1)
+                action_and_noise = np.concatenate((action_downsampled, variance_downsampled), axis=-1)
                 # print("actionandvar.shape",action_and_var.shape)
 
                 obs, reward, done, info = env.step(action_and_noise)
