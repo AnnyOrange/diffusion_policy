@@ -438,7 +438,26 @@ This repository is released under the MIT license. See [LICENSE](LICENSE) for ad
 * Our [shared_memory](./diffusion_policy/shared_memory) data structures are heavily inspired by [shared-ndarray2](https://gitlab.com/osu-nrsg/shared-ndarray2).
 =======
 # diffusion_policy Replay
-Pusht replay
+## Save pusht demo
+```console
+(robodiff)$ python eval.py --checkpoint data/checkpoints/epoch=0550-test_mean_score=0.969.ckpt --output_dir data/pusht_eval_output --device cuda:6
+```
+## Pusht replay openloop
 ```console
 (robodiff)$ python eval.py --checkpoint data/checkpoints/epoch=0550-test_mean_score=0.969.ckpt --output_dir data/pusht_eval_output --device cuda:6 --replay True
 ```
+### Adjust the acceleration multiple and method
+replay_pusht_video.py
+```python
+        self.const2x = True
+        self.const4x = False
+        self.var_speed = False
+        self.scale = 0.1
+```
+To set the speed at 2x: self.const2x = True, set all others to False.
+
+To set the speed at 4x: self.const4x = True, set all others to False.
+
+To use variance adjustment: self.var_speed = True, set all others to False. self.scale adjusts the speed ratio, where a larger self.scale results in a higher proportion of normal speed in the trajectory.
+
+## pusht replay closeloop

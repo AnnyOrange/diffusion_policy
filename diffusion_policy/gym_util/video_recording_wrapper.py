@@ -39,16 +39,18 @@ class VideoRecordingWrapper(gym.Wrapper):
         # print("act_var.shape",action_var.shape)
         action = action_var[:2]
         # print("action",action)
-        var = action_var[2:]
+        var = action_var[2:4]
+        flag = action_var[-1]
         # v_mean_pos = (var[0]+var[1]+var[2])/3
         # v_mean_rot = (var[3]+var[4]+var[5])/3
         # v_mean_all = np.mean(var)
         # print("v_mean_pos",v_mean_pos)
         # print("v_mean_all",v_mean_all)
         # print(format(v_mean_all, "e"))
-        # v_mean = (var[0]+var[1])/2
+        v_mean = (var[0]+var[1])/2
+        
         # import pdb; pdb.set_trace()
-        # print(super().step())
+
         
         # noise = 
         # if np.array_equal(if_noise, np.array([1.0, 1.0])):
@@ -72,9 +74,10 @@ class VideoRecordingWrapper(gym.Wrapper):
             frame = self.env.render(
                 mode=self.mode, **self.render_kwargs)
             assert frame.dtype == np.uint8
-            # frame = put_text(frame,  f"{v_mean_pos:.1e}")
-            # frame = put_text(frame,  f"{v_mean_rot:.1e}",position="bottom")
-            # frame = put_text(frame,  f"{v_mean_all:.1e}")
+            if flag==0:
+                frame = put_text_blue(frame,  f"{v_mean}")
+            else:
+                frame = put_text_red(frame,  f"{v_mean}")
             self.video_recoder.write_frame(frame)
         # print("------------------",self.statelist)
         return result
@@ -84,7 +87,7 @@ class VideoRecordingWrapper(gym.Wrapper):
             self.video_recoder.stop()
         return self.file_path
 
-def put_text(img, text, is_waypoint=False, font_size=0.5, thickness=2, position="top"):
+def put_text_blue(img, text, is_waypoint=False, font_size=0.5, thickness=2, position="top"):
     img = img.copy()
     if position == "top":
         p = (10, 30)
@@ -98,6 +101,35 @@ def put_text(img, text, is_waypoint=False, font_size=0.5, thickness=2, position=
         cv2.FONT_HERSHEY_SIMPLEX,
         font_size,
         (0, 255, 255),
+        thickness,
+        cv2.LINE_AA,
+    )
+    if is_waypoint:
+        img = cv2.putText(
+            img,
+            "*",
+            (10, 60),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            font_size,
+            (255, 255, 0),
+            thickness,
+            cv2.LINE_AA,
+        )
+    return img
+def put_text_red(img, text, is_waypoint=False, font_size=0.5, thickness=2, position="top"):
+    img = img.copy()
+    if position == "top":
+        p = (10, 30)
+    elif position == "bottom":
+        p = (10, img.shape[0] - 60)
+    # put the frame number in the top left corner
+    img = cv2.putText(
+        img,
+        str(text),
+        p,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        font_size,
+        (255, 0, 0),
         thickness,
         cv2.LINE_AA,
     )

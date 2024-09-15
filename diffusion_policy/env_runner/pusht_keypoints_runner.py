@@ -179,7 +179,7 @@ class PushTKeypointsRunner(BaseLowdimRunner):
         all_video_paths = [None] * n_inits
         all_rewards = [None] * n_inits
         # n_chunks = 1
-        data_replay = "data/pusht_replay/pusht_diffusion_noise_Var"
+        data_replay = "data/pusht_replay/pusht_diffusion2x"
         os.makedirs(data_replay, exist_ok=True)  # 如果目录不存在，则创建
 
         # 指定文件保存路径

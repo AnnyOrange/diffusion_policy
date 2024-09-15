@@ -98,19 +98,81 @@ class MultiStepWrapper(gym.Wrapper):
 
         obs = self._get_obs(self.n_obs_steps)
         return obs
-
+    ## 这个是快速版本的，但是没有加变色的
+    # def process_action_and_var2x(self, action_and_var):
+    #     # 提取 action_s, var_s 和 scale
+    #     action_s = action_and_var[:, :2]    # (N, 2)
+    #     var_s = action_and_var[:, 2:4]      # (N, 2)
+    #     scale = action_and_var[:, 5]        # (N,)
+        
+    #     # 第一步：计算 var_s 的平均值
+    #     avg_var_s = np.mean(var_s, axis=1)  # 计算每一行的平均值，形状为 (N,)
+        
+    #     # 矢量化条件判断，找到需要删除的索引
+    #     # 创建一个布尔数组，表示每个位置是否需要删除
+    #     # 首先扩展 scale，以便与 avg_var_s 对齐
+    #     scale_shifted = scale[1:]  # 向后移动一位
+    #     avg_var_s_shifted = avg_var_s[1:]  # 向后移动一位
+        
+    #     # 比较条件
+    #     condition = (avg_var_s[:-1] > scale[:-1]) & (avg_var_s_shifted > scale_shifted)
+        
+    #     # 需要删除的索引是满足条件的第一个元素的索引
+    #     indices_to_remove = np.where(condition)[0]
+        
+    #     # 构建保留的索引列表
+    #     indices = np.arange(len(avg_var_s))
+    #     # 删除需要移除的索引
+    #     indices = np.delete(indices, indices_to_remove)
+        
+    #     # 提取需要保留的 action_s 和 var_s
+    #     action_s_kept = action_s[indices]
+    #     var_s_kept = var_s[indices]
+        
+    #     # 合并 action_s 和 var_s
+    #     action_and_var_kept = np.concatenate((action_s_kept, var_s_kept), axis=-1)
+        
+    #     return action_and_var_kept
+    def process_action_and_var2x(self,action_and_var):
+        action_s = action_and_var[:,:2]
+        var_s = action_and_var[:,2:4]
+        scale = action_and_var[:,-1]
+        avg_var_s = np.mean(var_s, axis=1)  # 计算每一行的平均值，形状为 (8,)
+        ## 倍速
+        # 初始化一个列表用于存储保留的 action_s 的索引
+        indices_to_keep = []
+        flags = []
+        i = 0
+        while i < len(avg_var_s):
+            if i < len(avg_var_s) - 1 and avg_var_s[i] > scale[i] and avg_var_s[i + 1] > scale[i + 1]:
+                # 如果连续两个 avg_var_s 元素大于 scale，删除 i，保留 i+1
+                indices_to_keep.append(i + 1)
+                flags.append(1)
+                i += 2  # 跳过 i 和 i+1，进入下一步
+            else:
+                # 否则保留当前 i
+                indices_to_keep.append(i)
+                flags.append(0)
+                i += 1
+                
+        action_s_kept = action_s[indices_to_keep]
+        var_s_kept = var_s[indices_to_keep]
+        flags = np.array(flags).reshape(-1, 1)
+        return np.concatenate((action_s_kept,var_s_kept,flags), axis=-1)
+        
     def step(self, action_and_var):
     # def step(self,action):
         """
-        actions: (n_action_steps,) + action_shape
+        action_and_var 包含action var 和 scale
         """
+        if action_and_var[0, -1] > 0:
+            action_and_var = self.process_action_and_var2x(action_and_var)
         for combined in action_and_var:
         # for act in action:
             if len(self.done) > 0 and self.done[-1]:
                 # termination
                 break
             
-
             observation, reward, done, info = super().step(combined)
             # observation, reward, done, info = super().step(act)
             # print("-----------",self.statelist)

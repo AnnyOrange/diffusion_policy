@@ -40,7 +40,7 @@ class PushTEnv(gym.Env):
         self.seed()
         self.window_size = ws = 512  # The size of the PyGame window
         self.render_size = render_size
-        self.sim_hz = 100
+        self.sim_hz = 100 ##原先是100
         # Local controller params.
         self.k_p, self.k_v = 100, 20    # PD control.z
         self.control_hz = self.metadata['video.frames_per_second']
@@ -107,7 +107,9 @@ class PushTEnv(gym.Env):
         return observation
 
     def step(self, action):
+        
         dt = 1.0 / self.sim_hz
+        
         self.n_contact_points = 0
         n_steps = self.sim_hz // self.control_hz
         if action is not None:

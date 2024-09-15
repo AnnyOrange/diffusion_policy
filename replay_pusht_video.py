@@ -162,6 +162,11 @@ class PushTKeypointsRunner_Replay(BaseLowdimRunner):
         self.max_steps = max_steps
         self.tqdm_interval_sec = tqdm_interval_sec
         self.action_variance = []
+        self.const2x = True
+        self.const4x = False
+        self.var_speed = False
+        self.scale = 0.1
+        
 
     
     def run(self, policy: BaseLowdimPolicy):
@@ -253,13 +258,25 @@ class PushTKeypointsRunner_Replay(BaseLowdimRunner):
                     lambda x: torch.from_numpy(x).to(
                         device=device))
                 action = actions[step_i]
-                action_downsampled = action[:, ::2, :]
                 action_variance = variances[step_i]
-                variance_downsampled = action_variance[:, ::2, :]
-                step_i = step_i+1
-                # step env
-                action_and_noise = np.concatenate((action_downsampled, variance_downsampled), axis=-1)
-                # print("actionandvar.shape",action_and_var.shape)
+                if self.const2x==True:
+                    action_downsampled = action[:, ::2, :]
+                    variance_downsampled = action_variance[:, ::2, :]
+                    zeros_vector = np.zeros((56, 4, 1))
+                    action_and_noise = np.concatenate((action_downsampled, variance_downsampled,zeros_vector), axis=-1)
+                elif self.const4x==True:
+                    action_downsampled = action[:, ::4, :]
+                    variance_downsampled = action_variance[:, ::4, :]
+                    zeros_vector = np.zeros((56, 2, 1))
+                    action_and_noise = np.concatenate((action_downsampled, variance_downsampled,variance_downsampled,zeros_vector), axis=-1)
+                elif self.var_speed==True:
+                    mean_variances = np.mean(variances, axis=(0, 2, 3))* self.scale##改
+                    mean_variances_expanded = mean_variances.reshape(56, 1, 1)
+                    mean_variances_expanded = np.repeat(mean_variances_expanded, 8, axis=1)  # 重复 8 次
+                    action_and_noise = np.concatenate((action, action_variance,mean_variances_expanded), axis=-1)
+                
+                step_i = step_i+1    
+
 
                 obs, reward, done, info = env.step(action_and_noise)
                 # print("obs",obs)

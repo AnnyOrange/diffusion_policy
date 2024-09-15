@@ -23,7 +23,8 @@ from diffusion_policy.workspace.base_workspace import BaseWorkspace
 @click.option('-o', '--output_dir', required=True)
 @click.option('-d', '--device', default='cuda:0')
 @click.option('-r', '--replay', default=False)
-def main(checkpoint, output_dir, device,replay):
+@click.option('-l', '--close_loop',default=False)
+def main(checkpoint, output_dir, device,replay,close_loop):
     if os.path.exists(output_dir):
         click.confirm(f"Output path {output_dir} already exists! Overwrite?", abort=True)
     pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -53,6 +54,8 @@ def main(checkpoint, output_dir, device,replay):
     # run eval
     if replay == True:
         cfg.task.env_runner['_target_'] = 'replay_pusht_video.PushTKeypointsRunner_Replay'
+    if close_loop == True:
+        cfg.task.env_runner['_target_'] = 'closeloop_pusht_speedup.PushTKeypointsRunner_closeloop_speed'
     # print("cfg.task.env_runner",cfg.task.env_runner)
     env_runner = hydra.utils.instantiate(
         cfg.task.env_runner,
