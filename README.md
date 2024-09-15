@@ -454,10 +454,10 @@ replay_pusht_video.py
         self.var_speed = False
         self.scale = 0.1
 ```
-To set the speed at 2x: self.const2x = True, set all others to False.
+To set the speed at 2x: `self.const2x = True`, set all others to False.
 
-To set the speed at 4x: self.const4x = True, set all others to False.
+To set the speed at 4x: `self.const4x = True`, set all others to False.
 
-To use variance adjustment: self.var_speed = True, set all others to False. self.scale adjusts the speed ratio, where a larger self.scale results in a higher proportion of normal speed in the trajectory.
+To use variance adjustment: `self.var_speed = True`, set all others to False. self.scale adjusts the speed ratio, where a larger self.scale results in a higher proportion of normal speed in the trajectory.
 
 ## pusht replay closeloop
