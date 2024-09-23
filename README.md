@@ -453,11 +453,17 @@ replay_pusht_video.py
         self.const4x = False
         self.var_speed = False
         self.scale = 0.1
+        self.avg_speed = 1
+        self.err_threshold = 0
 ```
-To set the speed at 2x: `self.const2x = True`, set all others to False.
+To set the speed at 2x: `self.const2x = True`, set all others to `False`, `self.err_threshold = 0`, `self.avg_speed = 1`.
 
-To set the speed at 4x: `self.const4x = True`, set all others to False.
+To set the speed at 4x: `self.const4x = True`, set all others to False, `self.err_threshold = 0`, `self.avg_speed = 1`.
 
-To use variance adjustment: `self.var_speed = True`, set all others to False. self.scale adjusts the speed ratio, where a larger self.scale results in a higher proportion of normal speed in the trajectory.
+To use variance adjustment: `self.var_speed = True`, set all others to False, `self.err_threshold = 0`, `self.avg_speed = 1`. `self.scale` adjusts the speed ratio, where a larger self.scale results in a higher proportion of normal speed in the trajectory.
 
+To set the speed at avg nx (Heuristic Algorithms): `self.avg_speed = n`, where n>1, set all others to False, `self.err_threshold = 0`.
+
+To set the speed at avg nx (Optimizer): `self.err_threshold = c`, where c depends on the specific task, set all others to False, `self.avg_speed = 1`.
 ## pusht replay closeloop
+
