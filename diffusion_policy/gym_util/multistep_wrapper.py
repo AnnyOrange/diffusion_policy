@@ -165,6 +165,7 @@ class MultiStepWrapper(gym.Wrapper):
         """
         action_and_var 包含action var 和 scale
         """
+        # print(action_and_var)
         if action_and_var[0, -1] > 0:
             action_and_var = self.process_action_and_var2x(action_and_var)
         for combined in action_and_var:

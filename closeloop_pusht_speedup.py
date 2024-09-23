@@ -15,12 +15,12 @@ from diffusion_policy.gym_util.async_vector_env import AsyncVectorEnv
 # from diffusion_policy.gym_util.sync_vector_env import SyncVectorEnv
 from diffusion_policy.gym_util.multistep_wrapper import MultiStepWrapper
 from diffusion_policy.gym_util.video_recording_wrapper import VideoRecordingWrapper, VideoRecorder
-from waypoint_extraction.extract_waypoints import optimize_waypoint_selection,dp_waypoint_selection, greedy_waypoint_selection, entropy_waypoint_selection,gripper_change_detect
+
 from diffusion_policy.policy.base_lowdim_policy import BaseLowdimPolicy
 from diffusion_policy.common.pytorch_util import dict_apply
 from diffusion_policy.env_runner.base_lowdim_runner import BaseLowdimRunner
 
-class PushTKeypointsRunner_Replay(BaseLowdimRunner):
+class PushTKeypointsRunner_closeloop_speed(BaseLowdimRunner):
     def __init__(self,
             output_dir,
             keypoint_visible_rate=1.0,
@@ -165,200 +165,10 @@ class PushTKeypointsRunner_Replay(BaseLowdimRunner):
         self.output_dir = output_dir
         self.const2x = False
         self.const4x = False
-        self.var_speed = False
-        self.avg_speed = 1
-        self.scale = 0.3
-        self.err_threshold = 5
+        self.var_speed = True
+        self.scale = 0.1
         
-    def pad_to_fixed_length(self,arr,arr2, target_length, fill_mode='zero'):
-        """
-        Pads the input array to the target length.
-        
-        Parameters:
-        - arr: numpy array of shape (n, m) where n is the current length.
-        - target_length: int, the desired length after padding.
-        - fill_mode: str, 'zero' for zero padding, 'repeat' to repeat the last element.
-        
-        Returns:
-        - padded_arr: numpy array of shape (target_length, m).
-        """
-        current_length = arr.shape[0]
-        if current_length >= target_length:
-            # Truncate if longer
-            return arr[:target_length]
-        else:
-            # Padding
-            padding_length = target_length - current_length
-            if fill_mode == 'zero':
-                # Zero padding
-                padding = np.zeros((padding_length, arr.shape[1]))
-            elif fill_mode == 'repeat':
-                # Repeat the last element
-                last_element = arr[-1].reshape(1, -1)
-                padding = np.repeat(last_element, padding_length, axis=0)
-            else:
-                raise ValueError("Unsupported fill_mode. Use 'zero' or 'repeat'.")
-            
-            # Combine the original array with the padding
-            padded_arr = np.vstack((arr, padding))
-            padded_arr2 = np.vstack((arr2, padding))
-        return padded_arr, padded_arr2  
-    
-    def waypoint(self,flatten_actions,flatten_variances):
-        file_path_2 = os.path.join('data/pusht_eval_output-Original-speed', 'traj_points.npy')
-        traj_points = np.load(file_path_2)
-        flatten_actions = np.array(flatten_actions)
-        flatten_variances = np.array(flatten_variances)
-        # print(flatten_actions.shape)
-        lens = 0
-        total_actions_speed = 0
-        total_actions = 0
-        actions_ = []
-        variances_ = []
-        for traj_idx in range(flatten_actions.shape[0]):  
-            # traj_actions = actions[:, traj_idx, :, :]  # 当前轨迹的动作
-            # traj_variances = variances[:, traj_idx, :, :]
-            # flat_actions = traj_actions.reshape(-1, 2)
-            # flat_variances = traj_variances.reshape(-1, 2)
-            flat_actions = flatten_actions[traj_idx]
-            # print(len(flat_actions))
-            flat_variances = flatten_variances[traj_idx]
-            total_actions += len(flat_actions)
-            avg_variances = np.mean(flat_variances, axis=-1)
-            # # 最大最小归一化：
-            # min_val = np.min(avg_variances)
-            # max_val = np.max(avg_variances)
-            # avg_variances_scaled = (avg_variances - min_val) / (max_val - min_val)
-            # sigmoid：
-            # avg_variances_scaled = 1 / (1 + np.exp(-avg_variances))
-            # 使用 tanh 函数进行归一化
-            # avg_variances_scaled = np.tanh(avg_variances)
-            # # 标准化归一化
-            mean_val = np.mean(avg_variances)
-            std_val = np.std(avg_variances)
-            avg_variances_scaled = (avg_variances - mean_val) / std_val
-            # print(avg_variances.shape)
-            waypoints, distance = optimize_waypoint_selection( # if it's too slow, use greedy_waypoint_selection
-                    env=None,
-                    actions=flat_actions,
-                    gt_states=flat_actions,
-                    err_threshold=self.err_threshold,
-                    pos_only=True,
-                    entropy=avg_variances_scaled,
-                )
-            waypoints = np.array(waypoints)
-            print(f"2xspeed:{traj_points[traj_idx]/2},dis{traj_idx}:",(traj_points[traj_idx]/2)-len(waypoints))
-            adjusted_flat_actions = flat_actions[waypoints,:]
-            total_actions_speed+=len(waypoints)
-            adjusted_flat_variances = flat_variances[waypoints,:]
-            adjusted_flat_actions, adjusted_flat_variances = self.pad_to_fixed_length(arr = adjusted_flat_actions,arr2 = adjusted_flat_variances, target_length=304, fill_mode='repeat')
-            adjusted_actions = adjusted_flat_actions.reshape(38, 8, 2)
-            adjusted_variances = adjusted_flat_variances.reshape(38, 8, 2)
-            actions_.append(adjusted_actions)
-            variances_.append(adjusted_variances)
-        actions_ = np.array(actions_).transpose(1, 0, 2, 3)
-        variances_ = np.array(variances_).transpose(1, 0, 2, 3)
-        # print(actions_.shape)
-        avg_speed = total_actions/total_actions_speed
-        return actions_, variances_,avg_speed
-    
-    def adaptive_sampling(self, target_speedup, flatten_actions, flatten_variances):
-        target_speedup = target_speedup  # 平均x倍速
-        # actions = np.array(actions)
-        # variances = np.array(variances)
-        print("adaptive_sampling speed",target_speedup)
-        # 初始化存储调整后的轨迹
-        adjusted_actions = []
-        adjusted_variances = []
-        flatten_actions = np.array(flatten_actions)
-        flatten_variances = np.array(flatten_variances)
-        # 遍历每条轨迹
-        for traj_idx in range(flatten_actions.shape[0]):  
-            # traj_actions = actions[:, traj_idx, :, :]  # 当前轨迹的动作
-            # traj_variances = variances[:, traj_idx, :, :]  # 当前轨迹的方差
 
-            # # 将轨迹从 (38, 8, 2) 展开成 (38*8, 2)
-            # flat_actions = traj_actions.reshape(-1, 2)
-            # flat_variances = traj_variances.reshape(-1, 2)
-            # # print(np.min(np.abs(np.diff(flat_actions))))
-            # # print(len(flat_actions))
-            # print(flat_actions)
-            # import pdb;pdb.set_trace()
-            # 计算每个step的平均方差，shape: (38*8,)
-            flat_actions = flatten_actions[traj_idx]
-            flat_variances = flatten_variances[traj_idx]
-            avg_variances = np.mean(flat_variances, axis=-1)
-            min_variance = avg_variances.min() 
-            max_variance = avg_variances.max()
-
-            # 将方差映射到速度权重
-            speed_weights = 1 + (max_variance - avg_variances) / (max_variance - min_variance + 1e-5)
-
-            # 目标采样后的轨迹长度，缩短为目标速度倍数
-            target_length = int(len(flat_actions) / target_speedup)
-            
-            # 计算累积权重并归一化到 [0, 1] 范围
-            cumulative_weights = np.cumsum(speed_weights)
-            cumulative_weights /= cumulative_weights[-1]
-
-            # 在归一化后的累积权重上均匀采样 target_length 个点
-            new_indices = np.searchsorted(cumulative_weights, np.linspace(0, 1, target_length))
-            print(np.max(np.diff(new_indices)))
-
-            # 根据采样索引选择相应的动作和方差
-            adjusted_flat_actions = flat_actions[new_indices, :]
-            adjusted_flat_variances = flat_variances[new_indices, :]
-            # print(adjusted_flat_actions.shape)
-            adjusted_flat_actions, adjusted_flat_variances = self.pad_to_fixed_length(arr = adjusted_flat_actions,arr2 = adjusted_flat_variances, target_length=int(304/target_speedup), fill_mode='repeat')
-            # 将调整后的扁平轨迹恢复到 (38, new_steps, 2)
-            new_steps = int(8 / target_speedup)  # 例如2倍速时，new_steps = 4
-            adjusted_traj_actions = adjusted_flat_actions.reshape(38, new_steps, 2)
-            adjusted_traj_variances = adjusted_flat_variances.reshape(38, new_steps, 2)
-            # print(adjusted_traj_actions.shape)
-            
-            # 存储调整后的轨迹
-            adjusted_actions.append(adjusted_traj_actions)
-            adjusted_variances.append(adjusted_traj_variances)
-            # print(len(adjusted_actions))
-
-        # 合并所有调整后的轨迹
-        adjusted_actions = np.array(adjusted_actions).transpose(1, 0, 2, 3)
-        adjusted_variances = np.array(adjusted_variances).transpose(1, 0, 2, 3)
-        # print(adjusted_actions.shape)
-        # adjusted_actions = np.stack(adjusted_actions, axis=1)  # shape: (38, 56, new_steps, 2)
-        # adjusted_variances = np.stack(adjusted_variances, axis=1)
-        
-        return adjusted_actions, adjusted_variances
-    
-    def crop(self,actions,variances,target_length):
-        return actions[:target_length],variances[:target_length]
-    
-    def adjust_actions(self,actions,variances):
-        file_path_2 = os.path.join('data/pusht_eval_output-Original-speed', 'traj_points.npy')
-        traj_points = np.load(file_path_2)
-        actions = np.array(actions)
-        variances = np.array(variances)
-        flatten_acts = []
-        flatten_vars = []
-        for traj_idx in range(actions.shape[1]):  
-            traj_actions = actions[:, traj_idx, :, :]  # 当前轨迹的动作
-            traj_variances = variances[:, traj_idx, :, :]  # 当前轨迹的方差
-
-            # 将轨迹从 (38, 8, 2) 展开成 (38*8, 2)
-            flat_actions = traj_actions.reshape(-1, 2)
-            flat_variances = traj_variances.reshape(-1, 2)
-            # print(traj_points[traj_idx])
-            flat_actions,flat_variances = self.crop(actions=flat_actions,variances=flat_variances,target_length=traj_points[traj_idx])
-            flatten_acts.append(flat_actions)
-            flatten_vars.append(flat_variances)
-        if self.err_threshold>0:
-            actions_,variances_,speed_ = self.waypoint(flatten_actions=flatten_acts,flatten_variances=flatten_vars) 
-            # print("speed",speed)
-            # 将speed存入
-        elif self.avg_speed>1:
-            actions_,variances_ = self.adaptive_sampling(flatten_actions=flatten_acts, flatten_variances=flatten_vars,target_speedup=self.avg_speed)
-            speed_ = self.avg_speed
-        return actions_,variances_,speed_
     
     def run(self, policy: BaseLowdimPolicy):
         device = policy.device
@@ -391,14 +201,12 @@ class PushTKeypointsRunner_Replay(BaseLowdimRunner):
             variances = [f['variances'][f"step_{i}"][:] for i in range(step_num)]
             rewards = [f['rewards'][f"step_{i}"][:] for i in range(step_num)]
             observations = [f['observations'][f"step_{i}"][:] for i in range(step_num)]
-    
             # 提取 info 中的内容
             # pos_agent = [f['info/pos_agent'][f"step_{i}"][:] for i in range(step_num)]
             # vel_agent = [f['info/vel_agent'][f"step_{i}"][:] for i in range(step_num)]
             # block_pose = [f['info/block_pose'][f"step_{i}"][:] for i in range(step_num)]
             # goal_pose = [f['info/goal_pose'][f"step_{i}"][:] for i in range(step_num)]
             # n_contacts = [f['info/n_contacts'][f"step_{i}"][:] for i in range(step_num)]
-        
         # file_path = os.path.join('data/pusht_eval_output-Original-speed', 'learn_num.npy')
         # file_path_2 = os.path.join('data/pusht_eval_output-Original-speed', 'traj_points.npy')
         # learn_num = np.load(file_path)
@@ -407,14 +215,6 @@ class PushTKeypointsRunner_Replay(BaseLowdimRunner):
         # print(traj_points)
         # print("learn_num.shape",learn_num.shape)
         # print("traj_points.shape",learn_num.shape)
-        ## 采用新的avgspeed方法
-        # if self.avg_speed>1:
-        #     actions,variances = self.adaptive_sampling(target_speedup = self.avg_speed,actions = actions,variances = variances)
-        
-        # actions,variances,speed = self.waypoint(actions = actions,variances = variances)    
-        # print(speed)
-        # import pdb;pdb.set_trace()
-        actions,variances,speed_ = self.adjust_actions(actions,variances)
         step_i = 0    
         for chunk_idx in range(n_chunks):
             start = chunk_idx * n_envs
@@ -485,11 +285,13 @@ class PushTKeypointsRunner_Replay(BaseLowdimRunner):
                     mean_variances_expanded = np.repeat(mean_variances_expanded, 8, axis=1)  # 重复 8 次
                     action_and_noise = np.concatenate((action, action_variance,mean_variances_expanded), axis=-1)
                 else:
-                    zeros_vector = np.zeros((56,int(8/self.avg_speed), 1))
+                    zeros_vector = np.zeros((56, 8, 1))
                     action_and_noise = np.concatenate((action, action_variance,zeros_vector), axis=-1)
                 step_i = step_i+1    
-
-                obs, reward, done, info = env.step(action_and_noise)
+                i = 0
+                while i<2:
+                    obs, reward, done, info = env.step(action_and_noise)
+                    i+=1
                 # learn_num += (done == False)
                 # learn_num -= (done==False)
                 # done = (learn_num == 0)
@@ -555,7 +357,6 @@ class PushTKeypointsRunner_Replay(BaseLowdimRunner):
         # for i in range(len(self.env_fns)):
         # and comment out this line
         # print("n_inits",n_inits)
-        log_data['avg_speed:']=speed_
         for i in range(n_inits):
             seed = self.env_seeds[i]
             prefix = self.env_prefixs[i]
